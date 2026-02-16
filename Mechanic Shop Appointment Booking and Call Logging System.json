@@ -1,0 +1,1031 @@
+{
+  "name": "Mechanic Shop Appointment Booking and Call Logging System",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0d916810-8411-4cc4-8fa9-a248fc29024d",
+      "name": "Vapi Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1568,
+        288
+      ],
+      "webhookId": "848e77a5-1bea-4bc6-9a32-875d150f43fc"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.message.type }}",
+                    "rightValue": "tool-calls",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "tool-calls"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.message.type }}",
+                    "rightValue": "end-of-call-report",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "end-of-call-report"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fc39477d-ec99-4ea1-8cc2-14e313d44c3d",
+      "name": "Route by Message Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1344,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.message.toolCalls[0].function.name }}",
+                    "rightValue": "checkAvailability",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "checkAvailability"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.message.toolCalls[0].function.name }}",
+                    "rightValue": "submitAppointmentRequest",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "submitAppointmentRequest"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "da4f9b8d-c6ef-41bd-86fd-e93b1d31f48a",
+      "name": "Route by Function Name",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1120,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract requested_time from Vapi webhook payload\nconst requestedTime = $input.item.json.body.message.toolCalls[0].function.arguments.requested_time;\n\n// Return the extracted data\nreturn {\n  json: {\n    requested_time: requestedTime\n  }\n};"
+      },
+      "id": "7ce324f4-6232-461e-9017-b8b301a0cd66",
+      "name": "Extract Availability Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "formatDate",
+        "date": "={{ $json.requested_time }}",
+        "format": "yyyy-MM-dd'T'HH:mm:ssZZZ",
+        "outputFieldName": "converted_time",
+        "options": {
+          "fromFormat": "",
+          "timezone": false
+        }
+      },
+      "id": "e677874d-cc72-43d2-93e0-57419a23e5be",
+      "name": "Convert Time to NY (Availability)",
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "alaemehdi33@gmail.com",
+          "mode": "list",
+          "cachedResultName": "alaemehdi33@gmail.com"
+        },
+        "limit": 10,
+        "options": {}
+      },
+      "id": "a4bede8d-64ae-4107-8e54-f5c07dbf24dd",
+      "name": "Check Calendar Availability",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -448,
+        96
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "ff6Ggs03s9LYQgfG",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.items }}",
+              "operator": {
+                "type": "object",
+                "operation": "exists"
+              }
+            },
+            {
+              "id": "id-2",
+              "leftValue": "={{ $json.items.length }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c4d25e50-bec3-4e4a-85a2-e527c0969664",
+      "name": "Events Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -224,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"result\": \"busy\"\n}",
+        "options": {}
+      },
+      "id": "3405e037-a2ef-4865-ac22-f207c45c0518",
+      "name": "Respond Busy",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"result\": \"available\"\n}",
+        "options": {}
+      },
+      "id": "073d4ee4-5778-48d3-ba57-1e1fd4acded9",
+      "name": "Respond Available",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract appointment data from Vapi webhook\nconst toolCall = $input.item.json.body.message.toolCalls[0];\nconst args = toolCall.function.arguments;\n\nreturn {\n  client_name: args.client_name,\n  car_details: args.car_details,\n  requested_time: args.requested_time,\n  client_type: args.client_type\n};"
+      },
+      "id": "f52bdd55-91be-4420-9f2e-c4513be7e024",
+      "name": "Extract Appointment Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "formatDate",
+        "date": "={{ $json.requested_time }}",
+        "format": "yyyy-MM-dd'T'HH:mm:ssZZ",
+        "outputFieldName": "converted_time",
+        "options": {
+          "timezone": true
+        }
+      },
+      "id": "7613662b-f00a-4f8b-8f81-12ac7be64bf5",
+      "name": "Convert Time to NY (Appointment)",
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "alaemehdi33@gmail.com",
+          "mode": "list",
+          "cachedResultName": "alaemehdi33@gmail.com"
+        },
+        "start": "={{ $json.converted_time }}",
+        "end": "={{ new Date(new Date($json.converted_time).getTime() + 3600000).toISOString() }}",
+        "additionalFields": {
+          "color": "5",
+          "description": "={{ 'Car: ' + $json.car_details + '\\nType: ' + $json.client_type }}",
+          "summary": "={{ '[REQUEST] - ' + $json.client_name }}"
+        }
+      },
+      "id": "ceb84946-9a14-41fd-b786-bf0a35674aa3",
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -448,
+        288
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "ff6Ggs03s9LYQgfG",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"result\": \"appointment_pending_approval\"\n}",
+        "options": {}
+      },
+      "id": "bbf04049-8b0e-492c-b12b-5748d0ee9b09",
+      "name": "Respond Appointment Pending",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -224,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract call report data from Vapi webhook\nconst artifact = $input.item.json.message.artifact;\n\n// Extract structured data fields\nconst structuredData = artifact.structuredData || {};\n\n// Return extracted data\nreturn [\n  {\n    json: {\n      client_name: structuredData.client_name || '',\n      client_phone: structuredData.client_phone || '',\n      car_details: structuredData.car_details || '',\n      reported_issue: structuredData.reported_issue || '',\n      client_location: structuredData.client_location || '',\n      client_type: structuredData.client_type || '',\n      recordingUrl: artifact.recordingUrl || ''\n    }\n  }\n];"
+      },
+      "id": "8a16465f-d2d8-424f-8068-cbbb08513c47",
+      "name": "Extract Call Report Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1A3sMcgEX3Poy1ljoVT3BjUBWYmSno9-dU81BpYkX0gg",
+          "mode": "list",
+          "cachedResultName": "Mohamed Mechanics DB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1A3sMcgEX3Poy1ljoVT3BjUBWYmSno9-dU81BpYkX0gg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Active_Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1A3sMcgEX3Poy1ljoVT3BjUBWYmSno9-dU81BpYkX0gg/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Client Name",
+              "displayName": "Client Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Car Details",
+              "displayName": "Car Details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Appt Time",
+              "displayName": "Appt Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reported Issue",
+              "displayName": "Reported Issue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Client Type",
+              "displayName": "Client Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Recording Link",
+              "displayName": "Recording Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "098f4a5e-0e78-4d32-a304-3cd39fbbf506",
+      "name": "Append to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -896,
+        480
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ElEXKdJ5AgAkRyd0",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "b5dfa6ad-9da3-4807-bacc-49f2bd1e305f",
+      "name": "Schedule Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1568,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "now_plus_2h",
+              "value": "={{ $now.plus({ hours: 2 }) }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "now_plus_2h_15m",
+              "value": "={{ $now.plus({ hours: 2, minutes: 15 }) }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "now_plus_24h",
+              "value": "={{ $now.plus({ hours: 24 }) }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "now_plus_24h_15m",
+              "value": "={{ $now.plus({ hours: 24, minutes: 15 }) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a524853b-1709-4093-8f31-19146a8f304b",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1344,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "<__PLACEHOLDER_VALUE__CALENDAR_ID__>"
+        },
+        "limit": 100,
+        "timeMin": "={{ $('Workflow Configuration').item.json.now_plus_24h }}",
+        "timeMax": "={{ $('Workflow Configuration').item.json.now_plus_24h_15m }}",
+        "options": {}
+      },
+      "id": "f0ebe756-320b-4c8b-81d8-d945138e9f19",
+      "name": "Get Events 24h Ahead",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -1120,
+        704
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "ff6Ggs03s9LYQgfG",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "<__PLACEHOLDER_VALUE__CALENDAR_ID__>"
+        },
+        "limit": 100,
+        "timeMin": "={{ $('Workflow Configuration').item.json.now_plus_2h }}",
+        "timeMax": "={{ $('Workflow Configuration').item.json.now_plus_2h_15m }}",
+        "options": {}
+      },
+      "id": "36176b9d-fd99-409f-af16-63cbe7e16e5b",
+      "name": "Get Events 2h Ahead",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -1120,
+        896
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "ff6Ggs03s9LYQgfG",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.colorId }}",
+              "rightValue": "5",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "39ac8752-53d2-4024-a324-e71b2123184e",
+      "name": "Filter Out Yellow Events (24h)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -896,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.colorId }}",
+              "rightValue": "5",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6d33c2ca-b86f-4f6d-a729-328b75917b07",
+      "name": "Filter Out Yellow Events (2h)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -896,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const description = $input.item.json.description || '';\nconst phoneRegex = /\\+?\\d[\\d\\s\\-\\(\\)]{7,}\\d/;\nconst match = description.match(phoneRegex);\nconst phoneNumber = match ? match[0].replace(/[\\s\\-\\(\\)]/g, '') : '';\n\nreturn {\n  json: {\n    ...($input.item.json),\n    phoneNumber: phoneNumber,\n    startTime: $input.item.json.start.dateTime || $input.item.json.start.date\n  }\n};"
+      },
+      "id": "4f74d6fc-a81f-41df-a8fb-dc1fa6aaed6f",
+      "name": "Extract Phone Number (24h)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const description = $input.item.json.description || '';\nconst phoneRegex = /\\+?\\d[\\d\\s\\-\\(\\)]{7,}\\d/;\nconst match = description.match(phoneRegex);\nconst phoneNumber = match ? match[0].replace(/[\\s\\-\\(\\)]/g, '') : '';\n\nreturn {\n  json: {\n    ...($input.item.json),\n    phoneNumber: phoneNumber,\n    startTime: $input.item.json.start.dateTime || $input.item.json.start.date\n  }\n};"
+      },
+      "id": "f048f01b-ec63-4202-a550-8e46e55491db",
+      "name": "Extract Phone Number (2h)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "from": "<__PLACEHOLDER_VALUE__Your Twilio Phone Number__>",
+        "to": "={{ $json.phoneNumber }}",
+        "message": "=Reminder: You have an appointment with Mohamed Mobile Mechanic tomorrow at {{ $json.startTime }}. Please ensure the car is accessible.",
+        "options": {}
+      },
+      "id": "7868a099-dc10-46d4-852d-e4bfd96bc5e7",
+      "name": "Send SMS 24h Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        704
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "e59eFBKmT0keXmr6",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "from": "<__PLACEHOLDER_VALUE__Your Twilio Phone Number__>",
+        "to": "={{ $json.phoneNumber }}",
+        "message": "Heads up: Mohamed will be arriving in about 2 hours for your repair.",
+        "options": {}
+      },
+      "id": "dbcacc88-dd7f-43cf-9667-6b8229cb327f",
+      "name": "Send SMS 2h Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        896
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "e59eFBKmT0keXmr6",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## No-shows part",
+        "height": 384,
+        "width": 1888
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1632,
+        672
+      ],
+      "typeVersion": 1,
+      "id": "77917426-10e9-4d34-b5fc-a73fb870ce2a",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## BookAppotemen",
+        "height": 656,
+        "width": 1888
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1632,
+        -16
+      ],
+      "typeVersion": 1,
+      "id": "3dad9ebc-8093-4bfb-bcfb-5274c49dfca4",
+      "name": "Sticky Note1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Vapi Webhook": {
+      "main": [
+        [
+          {
+            "node": "Route by Message Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Message Type": {
+      "main": [
+        [
+          {
+            "node": "Route by Function Name",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Call Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Function Name": {
+      "main": [
+        [
+          {
+            "node": "Extract Availability Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Appointment Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Availability Data": {
+      "main": [
+        [
+          {
+            "node": "Convert Time to NY (Availability)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Time to NY (Availability)": {
+      "main": [
+        [
+          {
+            "node": "Check Calendar Availability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Calendar Availability": {
+      "main": [
+        [
+          {
+            "node": "Events Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Events Found?": {
+      "main": [
+        [
+          {
+            "node": "Respond Busy",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Appointment Data": {
+      "main": [
+        [
+          {
+            "node": "Convert Time to NY (Appointment)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Time to NY (Appointment)": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Respond Appointment Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Call Report Data": {
+      "main": [
+        [
+          {
+            "node": "Append to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Get Events 24h Ahead",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Events 2h Ahead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Events 24h Ahead": {
+      "main": [
+        [
+          {
+            "node": "Filter Out Yellow Events (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Events 2h Ahead": {
+      "main": [
+        [
+          {
+            "node": "Filter Out Yellow Events (2h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Out Yellow Events (24h)": {
+      "main": [
+        [
+          {
+            "node": "Extract Phone Number (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Out Yellow Events (2h)": {
+      "main": [
+        [
+          {
+            "node": "Extract Phone Number (2h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Phone Number (24h)": {
+      "main": [
+        [
+          {
+            "node": "Send SMS 24h Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Phone Number (2h)": {
+      "main": [
+        [
+          {
+            "node": "Send SMS 2h Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "5dbec45c-982b-4ca3-bfca-9dfdc68c5918",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "666d62b39c3a5aa56190f5dfb33435f8c3bdaa974bf9103cfb2d236e3338d628"
+  },
+  "id": "Zw4Pxtu1nQLIoqsk",
+  "tags": []
+}

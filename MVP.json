@@ -1,0 +1,1907 @@
+{
+  "name": "MVP",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// 1. Get the message object safely\nconst body = $input.item.json.body || $input.item.json;\nconst message = body.message || {};\n\n// 2. Extract Tool Calls\nconst toolCalls = message.toolCalls || [];\n\n// 3. Find the function calls\nconst bookingCall = toolCalls.find(call => call.function?.name === 'bookAppointment');\nconst availabilityCall = toolCalls.find(call => call.function?.name === 'check_Availability');\n\n// DECIDE MODE: Are we Booking or Checking Availability?\nlet mode = '';\nlet args = {};\nlet toolCallId = '';\n\nif (bookingCall) {\n  mode = 'booking';\n  args = bookingCall.function.arguments;\n  toolCallId = bookingCall.id;\n} else if (availabilityCall) {\n  mode = 'availability';\n  args = availabilityCall.function.arguments;\n  toolCallId = availabilityCall.id;\n}\n\n// Parse JSON string if needed\nif (typeof args === 'string') {\n  try {\n    args = JSON.parse(args);\n  } catch (e) {}\n}\n\nreturn [{\n  json: {\n    mode: mode,\n    toolCallId: toolCallId,\n    client_name: args.client_name || '',\n    phone: args.client_phone || '',\n    address: args.client_address || '',\n    start_time: args.start_time || '',\n    issue_description: args.issue_description || '',\n    date: args.date || ''\n  }\n}];"
+      },
+      "id": "e6a71430-2355-49e0-9bc0-48799cad2fe9",
+      "name": "Extract Tool Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        1344
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.mode }}",
+              "value2": "availability"
+            }
+          ]
+        }
+      },
+      "id": "a118d827-c98d-452f-b4c4-9358dcb87a7c",
+      "name": "Check Availability or Book?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        1344
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c3d1909f-57ec-422c-9e61-98f13da58c96",
+      "name": "Vapi Webhook Trigger1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        1344
+      ],
+      "webhookId": "4c27695a-a12c-449a-945b-10601bea9e28"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "list",
+          "value": "appbmWSICLVrmubGl"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Appointments"
+        },
+        "filterByFormula": "IS_SAME({Start Time}, '{{ $json.date }}', 'day')",
+        "options": {}
+      },
+      "id": "1b862b5e-59de-4d78-99a7-8add67704244",
+      "name": "List Appointments by Date1",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        80,
+        1216
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get Context\nconst extractNode = $('Extract Tool Details').first().json;\nconst requestedDate = extractNode.date;\nconst toolCallId = extractNode.toolCallId; \n\n// 2. Get Appointments\nconst appointments = $input.all();\n\n// Define business hours (8 AM to 6 PM)\nconst businessStart = 8; \nconst businessEnd = 18;  \n\n// Create array of all possible time slots\nconst allSlots = [];\nfor (let hour = businessStart; hour < businessEnd; hour++) {\n  allSlots.push(hour);\n}\n\n// 3. Extract booked hours\nconst bookedHours = appointments.map(item => {\n  const appointmentTime = item.json['Start Time'];\n  if (appointmentTime) {\n    return parseInt(appointmentTime.split(':')[0]);\n  }\n  return null;\n}).filter(hour => hour !== null);\n\n// 4. Find available slots\nconst availableSlots = allSlots.filter(hour => !bookedHours.includes(hour));\n\n// Helper: Format hours\nconst formatTime = (hour) => {\n  if (hour === 12) return '12pm';\n  if (hour > 12) return `${hour - 12}pm`;\n  return `${hour}am`;\n};\n\n// 5. Create the message\nlet message;\nif (availableSlots.length === 0) {\n  message = `I don't have any openings left on ${requestedDate}.`;\n} else {\n  const allReadableSlots = availableSlots.map(formatTime).join(', ');\n  message = `I have the following openings available: ${allReadableSlots}.`;\n}\n\n// 6. Return JSON for Vapi\nreturn {\n  json: {\n    results: [\n      {\n        toolCallId: toolCallId,\n        result: message \n      }\n    ]\n  }\n};"
+      },
+      "id": "d631f65f-5676-4a34-8e5e-e44c9934a880",
+      "name": "Calculate Available Slots1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        1216
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "c83e156b-1e2e-412d-aeb3-1afcc8c21840",
+      "name": "Return Available Slots1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        528,
+        1216
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "list",
+          "value": "appbmWSICLVrmubGl"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Contacts"
+        },
+        "filterByFormula": "={Phone Number} = \"{{ $('Extract Tool Details').item.json.phone }}\"",
+        "options": {}
+      },
+      "id": "7fd4f76d-8f8c-4d90-965d-c3ed176ed193",
+      "name": "Search Contact by Phone1",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        80,
+        1488
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.id }}",
+              "operation": "notEqual",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "fa93c0ed-1059-46a4-b199-2cdf1f1ecc3f",
+      "name": "Contact Exists?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        304,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "mode": "list",
+          "value": "appbmWSICLVrmubGl"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Contacts"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $('Extract Tool Details').item.json.client_name }}",
+            "Phone Number": "={{ $('Extract Tool Details').item.json.phone }}",
+            "Address": "={{ $('Extract Tool Details').item.json.address }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "92f07da6-5b8b-410a-8bef-ca83998e04f2",
+      "name": "Create New Contact1",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        528,
+        1584
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "mode": "list",
+          "value": "appbmWSICLVrmubGl"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Appointments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Client": "={{ $json.id }}",
+            "Start Time": "={{ $('Extract Tool Details').item.json.start_time }}",
+            "Issue Description": "={{ $('Extract Tool Details').item.json.issue_description }}",
+            "Status": "Scheduled",
+            "Diagnostic Fee Agreed": true
+          }
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "id": "bc568560-65d8-4d54-aaea-8f74ad994111",
+      "name": "Create Appointment1",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        752,
+        1488
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "from": "YOUR_TWILIO_NUMBER",
+        "to": "={{ $('Extract Tool Details').item.json.phone }}",
+        "message": "=Your appointment is confirmed for {{ DateTime.fromISO($('Extract Tool Details').item.json.start_time).toFormat(\"MMM dd 'at' h:mm a\") }}. We look forward to seeing you!",
+        "options": {}
+      },
+      "id": "b93f5fc5-3a38-44f6-a463-a96d0e896912",
+      "name": "Send SMS Confirmation1",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        960,
+        1488
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "ZsL0B4RLJlW5tMix",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"results\": [\n    {\n      \"toolCallId\": \"{{ $('Extract Tool Details').item.json.toolCallId }}\",\n      \"result\": \"The appointment has been successfully booked in Airtable and the SMS confirmation has been sent to the client.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "3019e234-6b0e-475a-8852-3f811003cc1e",
+      "name": "Return Booking Confirmed1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "2c7ae6c0-ca79-4df4-9c3a-51dae77ab631",
+      "name": "Daily 9 AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -544,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "list",
+          "value": "appbmWSICLVrmubGl"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Appointments"
+        },
+        "filterByFormula": "IS_SAME({Start Time}, DATEADD(TODAY(), 1, 'days'), 'day')",
+        "options": {}
+      },
+      "id": "c0848760-873c-419c-81fc-64fb761d069b",
+      "name": "List Tomorrow's Appointments",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        1920
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "046ce0f8-a70d-4f42-8dd4-8b51d4fc99ba",
+      "name": "Loop Over Appointments",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -96,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "from": "YOUR_TWILIO_NUMBER",
+        "to": "={{ $json['Client Phone (Lookup)'][0] }}",
+        "message": "=Hi {{ $json['Client Name (Lookup)'][0] }}, confirming your technician for tomorrow at {{ DateTime.fromISO($json['Start Time']).toFormat('h:mm a') }}. Reply 'YES' to confirm.",
+        "options": {}
+      },
+      "id": "b7de0f37-7b99-4398-8fb4-4d12756b73e2",
+      "name": "Send SMS Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        128,
+        1920
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "ZsL0B4RLJlW5tMix",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## The Gatekeeper (Inbound AI Receptionist) \nThe 24/7 guard that filters every incoming call.\nFunction: Picks up in < 1 second. Captures Name, Address, and Issue.",
+        "height": 544,
+        "width": 2016,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -640,
+        1184
+      ],
+      "typeVersion": 1,
+      "id": "9898817e-ca45-4674-a0b7-1f40ce5b4bfe",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## The Gatekeeper (Inbound AI Receptionist)\nThe \"No-Show Killer\" (Confirmation Sequence):\nFunction: automated SMS sent 24 hours before the appointment.",
+        "height": 416,
+        "width": 2016,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -640,
+        1760
+      ],
+      "typeVersion": 1,
+      "id": "fa0fd708-2c52-47ff-860b-9665a7ec1e01",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## The Capture & Instant Callback Agent (The Lead Hunter)\nFor clients who contact you via your Website or Forms. We turn cold forms into hot conversations.\n\n",
+        "height": 896,
+        "width": 1872,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1536,
+        1184
+      ],
+      "typeVersion": 1,
+      "id": "3ee7fa41-cacf-467e-b50a-0d0e463de995",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "79608520-484d-49b6-93a8-b0a06ae91470",
+      "name": "1st of Month Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -320,
+        2368
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $now.month }}",
+              "operation": "equal",
+              "value2": 4
+            },
+            {
+              "value1": "={{ $now.month }}",
+              "operation": "equal",
+              "value2": 10
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "id": "d0912e68-e3e4-47b7-9b70-f33982aa704b",
+      "name": "Is it April or Oct?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        2368
+      ],
+      "notes": "Checks if month is 4 (April) or 10 (Oct)"
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "base": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "table": {
+          "__rl": true,
+          "value": "Contacts",
+          "mode": "list",
+          "cachedResultName": "Contacts"
+        }
+      },
+      "id": "0e6e495d-7cad-4666-a8b8-0a768c204431",
+      "name": "Get All Past Clients",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        112,
+        2368
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "3477a656-382d-4288-b88f-08256bd8b35b",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        336,
+        2368
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $now.month }}",
+              "operation": "equal",
+              "value2": 10
+            }
+          ]
+        }
+      },
+      "id": "767c460d-2899-4759-b54d-6fb89bd010f9",
+      "name": "Determine Season",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        560,
+        2368
+      ]
+    },
+    {
+      "parameters": {
+        "from": "+1234567890",
+        "to": "={{ $json[\"Phone Number\"] }}",
+        "message": "=❄️ Winter is coming, {{ $json.Name }}! Get your $89 heater tune-up before the freeze hits. Reply BOOK to schedule.",
+        "options": {}
+      },
+      "id": "1d681b6c-88ef-4794-b831-85a550046be6",
+      "name": "Send Winter SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        816,
+        2240
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "ZsL0B4RLJlW5tMix",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "from": "+1234567890",
+        "to": "={{ $json[\"Phone Number\"] }}",
+        "message": "=☀️ Ready for the heat, {{ $json.Name }}? Schedule your AC check-up now to avoid summer breakdown. Link: https://calendly.com/your-link",
+        "options": {}
+      },
+      "id": "d7010a9e-0179-4a70-939c-b61e40ad41a4",
+      "name": "Send Summer SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        816,
+        2480
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "ZsL0B4RLJlW5tMix",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 20,
+        "unit": "seconds"
+      },
+      "id": "2276665e-5281-4a63-9634-3cb20a7e6e24",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        2368
+      ],
+      "webhookId": "59dbc374-0c70-43ee-bf28-27f458ff410b"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job-done",
+        "options": {}
+      },
+      "id": "1b1d7e55-a95a-4634-b7a9-442a5c1d03d4",
+      "name": "Webhook (Job Done)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -336,
+        2608
+      ],
+      "webhookId": "8e88fe9f-3074-4d89-ae47-1e613b00a20f",
+      "notes": "Triggers when Airtable status changes to Done"
+    },
+    {
+      "parameters": {
+        "from": "+1234567890",
+        "to": "={{ $json.body.ClientPhone }}",
+        "message": "=Hi {{ $json.body.ClientName }}, thanks for choosing us! Could you take 10 seconds to leave us a review here? https://g.page/r/your-review-link",
+        "options": {}
+      },
+      "id": "5fda73a7-8e13-479e-9490-50e169e1f834",
+      "name": "Send Review SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        2608
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "ZsL0B4RLJlW5tMix",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "##  The Money Maker (Newsletter & Reactivation) Customer Retention.\n\n1 -  Seasonal Campaigns (Automated via n8n):\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n2 - The \"Reputation Booster\" (Google Reviews):",
+        "height": 576,
+        "width": 2016
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -640,
+        2240
+      ],
+      "typeVersion": 1,
+      "id": "489ca404-b086-4d33-a8ee-a9a5cba480d4",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat",
+        "options": {}
+      },
+      "id": "ede6832e-dd38-472d-bd39-65ecc8a6e7a7",
+      "name": "Webhook (Typebot)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        2416
+      ],
+      "webhookId": "0b0bd673-f65f-40d7-9f4b-5024bf7525f6"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {},
+        "requestOptions": {}
+      },
+      "id": "60749b61-09cf-403b-8faa-343d16d90fa5",
+      "name": "AI Classifier",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        2416
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.content.trim().toUpperCase() }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "TECHNICAL"
+            },
+            {
+              "value2": "FAQ",
+              "output": 1
+            },
+            {
+              "value2": "BOOKING",
+              "output": 2
+            }
+          ]
+        }
+      },
+      "id": "1ffadcc7-f07e-45fc-ba1c-a7d18bf67ce6",
+      "name": "Switch (Router)",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        2224,
+        2416
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "operation": "create",
+        "application": {
+          "__rl": true,
+          "mode": "url",
+          "value": ""
+        },
+        "table": {
+          "mode": "list",
+          "value": "Contacts"
+        }
+      },
+      "id": "66db33c6-cf40-4aae-a593-9e392d910efb",
+      "name": "Log Ticket (Airtable)",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        2272
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "operation": "list",
+        "application": {
+          "__rl": true,
+          "mode": "url",
+          "value": ""
+        },
+        "table": {
+          "mode": "list",
+          "value": "Knowledge_Base"
+        },
+        "additionalOptions": {}
+      },
+      "id": "253af6b5-eb44-4c68-a96e-1a79cbfe65fa",
+      "name": "Get FAQs (Airtable)",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        2416
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "087a7f68-52af-4299-b31d-20d30179635c",
+      "name": "Msg: Technical",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        2768,
+        2272
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {},
+        "requestOptions": {}
+      },
+      "id": "8ec737fc-6797-4301-92a5-45321cb7d8fe",
+      "name": "AI Sales Pivot",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        2768,
+        2416
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "b456f04b-e268-486b-834d-3c45e22f45ce",
+      "name": "Msg: Booking",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        2624
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"reply\": \"{{ $json.content ? $json.content : $json.message.content }}\"\n}",
+        "options": {}
+      },
+      "id": "69db3352-e8b4-441d-bcdb-6a15366d7ac4",
+      "name": "Respond to Typebot",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3056,
+        2416
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## The Knowledge Base (Level 1 Support)\nFocus: Time Management & Noise Filtering.",
+        "height": 672,
+        "width": 1872,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1536,
+        2128
+      ],
+      "typeVersion": 1,
+      "id": "3bec6091-90f0-4e09-86f0-5ea420221a85",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "new-lead",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        1616,
+        1296
+      ],
+      "id": "72108343-8865-4c05-ae93-e9314965a39c",
+      "name": "Tally Webhook1",
+      "webhookId": "2df96896-23a6-427d-989b-cfa30bdd356d"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get the phone number from Tally\nlet phone = $input.item.json.body.data.fields.find(f => f.label.includes('reach you')).value;\n\n// 2. Remove any non-numeric characters (spaces, dashes, parens)\nphone = phone.replace(/[\\s\\-\\(\\)]/g, '');\n\n// 3. Force US Country Code (+1) if missing\nif (!phone.startsWith('+')) {\n  phone = '+1' + phone;\n}\n\n// 4. Return the clean data for the next node\nreturn {\n  phone_sanitized: phone,\n  name: $input.item.json.body.data.fields.find(f => f.label.includes('Name')).value,\n  service: $input.item.json.body.data.fields.find(f => f.label.includes('type of service')).value,\n  issue: $input.item.json.body.data.fields.find(f => f.label.includes('describe the problem')).value\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        1296
+      ],
+      "id": "03c8865d-0b0e-42a1-8524-ec2b58af1a5b",
+      "name": "Format Data1"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appbmWSICLVrmubGl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl8IK8Vd8BnxnxVs",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.name }}",
+            "Phone Number": "={{ $json.phone_sanitized }}",
+            "Summary of Issues": "={{ $json.issue }}",
+            "Client Type (AI)": "={{ $json.service }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        2064,
+        1296
+      ],
+      "id": "f7189812-65ed-4fd2-9a27-68b5e27cfe1e",
+      "name": "Create Contact (Airtable)1",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vapi.ai/call/phone",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phoneNumberId",
+              "value": "f5120346-ca58-4b3e-b9df-dccbeb168f90"
+            },
+            {
+              "name": "assistantId",
+              "value": "aaecb947-7fbd-47e2-980d-78e27cf7f195"
+            },
+            {
+              "name": "customer",
+              "value": "={{ {\"number\": $json[\"Phone Number\"], \"name\": $json[\"Name\"]} }}"
+            },
+            {
+              "name": "assistantOverrides",
+              "value": "={{ {\n    \"variableValues\": {\n      \"name\": $json[\"Name\"],\n      \"service_type\": $json[\"Client Type (AI)\"],\n      \"issue_description\": $json[\"Summary of Issues\"]\n    }\n  } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2288,
+        1296
+      ],
+      "id": "7835232c-3028-4b3a-81a3-088d5fa17a16",
+      "name": "Trigger Vapi Call1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-tool-calls",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        1616,
+        1696
+      ],
+      "id": "dcfd5d77-097e-4b62-8794-90f4273e8547",
+      "name": "Vapi Webhook1",
+      "webhookId": "4d1a89e9-8065-4682-8639-4a4322ee7a84"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "toolCallId",
+              "value": "={{ $json.body.message.toolCalls[0].id }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "toolName",
+              "value": "={{ $json.body.message.toolCalls[0].function.name }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "toolArgs",
+              "value": "={{ $json.body.message.toolCalls[0].function.arguments }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1840,
+        1696
+      ],
+      "id": "50ca96f8-6304-4c95-82c0-5414f6ebfca5",
+      "name": "Workflow Configuration1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.toolName }}",
+                    "rightValue": "check_availability",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "check_availability"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.toolName }}",
+                    "rightValue": "book_appointment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "book_appointment"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2064,
+        1696
+      ],
+      "id": "bbf0639a-3c10-4e9e-be05-8e20a8bfea29",
+      "name": "Route by Tool Name1"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appbmWSICLVrmubGl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblJX4yeuGD1GOgMC",
+          "mode": "id"
+        },
+        "filterByFormula": "={{ '{Start Time}' + '=' + '\"' + $('Workflow Configuration1').item.json.toolArgs.preferred_date + '\"' }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2304,
+        1584
+      ],
+      "id": "8f278757-8411-40e7-9b2d-54efbcc7fdbd",
+      "name": "Search Appointments1",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2528,
+        1584
+      ],
+      "id": "6b3ad47e-8346-460d-84bc-d078a0da2035",
+      "name": "Check If Time Available1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "result",
+              "value": "That time is taken.",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "toolCallId",
+              "value": "={{ $('Workflow Configuration1').item.json.toolCallId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2736,
+        1504
+      ],
+      "id": "0870b5e8-f41f-4596-8120-b70bfd7aeb71",
+      "name": "Time Taken Response1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "result",
+              "value": "That time is available.",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "toolCallId",
+              "value": "={{ $('Workflow Configuration1').item.json.toolCallId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2736,
+        1664
+      ],
+      "id": "284a61aa-014a-43be-ad31-bdb7b62299f9",
+      "name": "Time Available Response1"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appbmWSICLVrmubGl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblJX4yeuGD1GOgMC",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Start Time": "={{ $('Workflow Configuration1').item.json.toolArgs.final_datetime }}",
+            "Issue Description": "={{ $('Workflow Configuration1').item.json.toolArgs.service_category }}",
+            "Client Name (Lookup)": "={{ $('Workflow Configuration1').item.json.toolArgs.customer_name }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Start Time",
+              "displayName": "Start Time",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Issue Description",
+              "displayName": "Issue Description",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2304,
+        1888
+      ],
+      "id": "ed8d5b39-fbc0-4c56-8c14-b1e8c607d383",
+      "name": "Create Appointment2",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "7aVIAD20A8CkYVFQ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "result",
+              "value": "=Appointment confirmed for {{ $('Workflow Configuration1').item.json.toolArgs.final_datetime }}.",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "toolCallId",
+              "value": "={{ $('Workflow Configuration1').item.json.toolCallId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2736,
+        1888
+      ],
+      "id": "74331eda-eb82-4cf3-b304-24ef030612fd",
+      "name": "Booking Confirmed Response1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { results: [{ toolCallId: $input.item.json.toolCallId, result: $input.item.json.result }] } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        1696
+      ],
+      "id": "10adc77f-10b2-43b8-a446-bc4fbecdaea7",
+      "name": "Format Vapi Response1"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3184,
+        1696
+      ],
+      "id": "9aa2fa4f-fe96-438b-98fd-8829959dd8af",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "from": "+18313465633",
+        "to": "={{ $('Workflow Configuration').item.json.toolArgs.customer_phone }}",
+        "message": "={{ \"Hi \" + $('Workflow Configuration').item.json.toolArgs.customer_name + \", your appointment with BM ClimatePro is confirmed for \" + $('Workflow Configuration').item.json.toolArgs.final_datetime + \".\" }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        2528,
+        1888
+      ],
+      "id": "06072cc2-737a-43a1-a121-044c443eac2b",
+      "name": "Send an SMS/MMS/WhatsApp message",
+      "credentials": {
+        "twilioApi": {
+          "id": "ZsL0B4RLJlW5tMix",
+          "name": "Twilio account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Extract Tool Details": {
+      "main": [
+        [
+          {
+            "node": "Check Availability or Book?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Availability or Book?": {
+      "main": [
+        [
+          {
+            "node": "List Appointments by Date1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Contact by Phone1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vapi Webhook Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Extract Tool Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Appointments by Date1": {
+      "main": [
+        [
+          {
+            "node": "Calculate Available Slots1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Available Slots1": {
+      "main": [
+        [
+          {
+            "node": "Return Available Slots1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Contact by Phone1": {
+      "main": [
+        [
+          {
+            "node": "Contact Exists?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Exists?1": {
+      "main": [
+        [
+          {
+            "node": "Create Appointment1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create New Contact1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create New Contact1": {
+      "main": [
+        [
+          {
+            "node": "Create Appointment1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Appointment1": {
+      "main": [
+        [
+          {
+            "node": "Send SMS Confirmation1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send SMS Confirmation1": {
+      "main": [
+        [
+          {
+            "node": "Return Booking Confirmed1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 9 AM Trigger": {
+      "main": [
+        [
+          {
+            "node": "List Tomorrow's Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Tomorrow's Appointments": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Appointments": {
+      "main": [
+        [
+          {
+            "node": "Send SMS Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send SMS Reminder": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1st of Month Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is it April or Oct?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is it April or Oct?": {
+      "main": [
+        [
+          {
+            "node": "Get All Past Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Past Clients": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Determine Season",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Season": {
+      "main": [
+        [
+          {
+            "node": "Send Winter SMS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Summer SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Winter SMS": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Summer SMS": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (Job Done)": {
+      "main": [
+        [
+          {
+            "node": "Send Review SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (Typebot)": {
+      "main": [
+        [
+          {
+            "node": "AI Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Classifier": {
+      "main": [
+        [
+          {
+            "node": "Switch (Router)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch (Router)": {
+      "main": [
+        [
+          {
+            "node": "Log Ticket (Airtable)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get FAQs (Airtable)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg: Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Ticket (Airtable)": {
+      "main": [
+        [
+          {
+            "node": "Msg: Technical",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg: Technical": {
+      "main": [
+        [
+          {
+            "node": "Respond to Typebot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get FAQs (Airtable)": {
+      "main": [
+        [
+          {
+            "node": "AI Sales Pivot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Sales Pivot": {
+      "main": [
+        [
+          {
+            "node": "Respond to Typebot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg: Booking": {
+      "main": [
+        [
+          {
+            "node": "Respond to Typebot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tally Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Format Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Data1": {
+      "main": [
+        [
+          {
+            "node": "Create Contact (Airtable)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Contact (Airtable)1": {
+      "main": [
+        [
+          {
+            "node": "Trigger Vapi Call1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vapi Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration1": {
+      "main": [
+        [
+          {
+            "node": "Route by Tool Name1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Tool Name1": {
+      "main": [
+        [
+          {
+            "node": "Search Appointments1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Appointment2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Appointments1": {
+      "main": [
+        [
+          {
+            "node": "Check If Time Available1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Time Available1": {
+      "main": [
+        [
+          {
+            "node": "Time Taken Response1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Time Available Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Time Taken Response1": {
+      "main": [
+        [
+          {
+            "node": "Format Vapi Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Time Available Response1": {
+      "main": [
+        [
+          {
+            "node": "Format Vapi Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking Confirmed Response1": {
+      "main": [
+        [
+          {
+            "node": "Format Vapi Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Vapi Response1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an SMS/MMS/WhatsApp message": {
+      "main": [
+        [
+          {
+            "node": "Booking Confirmed Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Appointment2": {
+      "main": [
+        [
+          {
+            "node": "Send an SMS/MMS/WhatsApp message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "fda2b726-ba7a-41d8-bab2-fdd243c7d5dd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e686910157bf8e1c58d420cc1f1ad317317b3e2e7cb0c31d7e52eac01c1a1c35"
+  },
+  "id": "nAGu5PReq9DADh0n",
+  "tags": [
+    {
+      "updatedAt": "2025-12-30T10:25:14.925Z",
+      "createdAt": "2025-12-30T10:25:14.925Z",
+      "id": "xnzdmJ62eJplIm50",
+      "name": "Workflows"
+    }
+  ]
+}
